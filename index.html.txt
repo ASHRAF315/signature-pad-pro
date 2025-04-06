@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SignaturePad PRO</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Pacifico&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f8f9fa;
+      color: #333;
+      padding: 20px;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background: #121212;
+      color: #fff;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      width: 100%;
+      max-width: 600px;
+      height: 300px;
+      background: #fff;
+    }
+    .controls {
+      margin-top: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    select, input[type="color"], input[type="range"], button {
+      padding: 5px;
+      font-size: 1rem;
+    }
+    .text-signature {
+      font-family: 'Pacifico', cursive;
+      font-size: 32px;
+      padding: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h2>✍️ SignaturePad PRO</h2>
+
+  <!-- Canvas -->
+  <canvas id="signature-pad"></canvas>
+
+  <!-- Controls -->
+  <div class="controls">
+    <label>🖌️ Pen Color:
+      <input type="color" id="pen-color" value="#000000" />
+    </label>
+
+    <label>📏 Pen Size:
+      <input type="range" id="pen-size" min="1" max="10" value="3" />
+    </label>
+
+    <label>🌙 Dark Mode:
+      <input type="checkbox" id="dark-mode" />
+    </label>
+
+    <label>📄 Upload Background:
+      <input type="file" id="upload-bg" accept="image/*" />
+    </label>
+
+    <label>🔖 Watermark:
+      <input type="checkbox" id="toggle-watermark" />
+    </label>
+
+    <button id="undo">↩️ Undo</button>
+    <button id="clear">🧹 Clear</button>
+    <button id="save">💾 Save</button>
+    <button id="email">📧 Send</button>
+  </div>
+
+  <!-- Text Signature Generator -->
+  <h3>✍️ Or Type Your Signature</h3>
+  <input type="text" id="text-signature" placeholder="Type your name..." />
+  <div id="preview-text" class="text-signature"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.5/dist/signature_pad.umd.min.js"></script>
+  <script>
+    const canvas = document.getElementById("signature-pad");
+    const signaturePad = new SignaturePad(canvas, {
+      backgroundColor: "rgb(255,255,255)"
+    });
+
+    function resizeCanvas() {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      canvas.width = canvas.offsetWidth * ratio;
+      canvas.height = canvas.offsetHeight * ratio;
+      canvas.getContext("2d").scale(ratio, ratio);
+      signaturePad.clear();
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Pen color & size
+    document.getElementById("pen-color").addEventListener("input", e => {
+      signaturePad.penColor = e.target.value;
+    });
+    document.getElementById("pen-size").addEventListener("input", e => {
+      const size = parseFloat(e.target.value);
+      signaturePad.minWidth = size * 0.4;
+      signaturePad.maxWidth = size;
+    });
+
+    // Undo
+    let history = [];
+    signaturePad.addEventListener("beginStroke", () => {
+      history.push(signaturePad.toData());
+    });
+    document.getElementById("undo").addEventListener("click", () => {
+      history.pop();
+      signaturePad.clear();
+      signaturePad.fromData(history[history.length - 1] || []);
+    });
+
+    // Clear
+    document.getElementById("clear").addEventListener("click", () => {
+      signaturePad.clear();
+      history = [];
+      localStorage.removeItem("savedSignature");
+    });
+
+    // Save
+    document.getElementById("save").addEventListener("click", () => {
+      if (signaturePad.isEmpty()) return alert("Draw your signature first!");
+      const watermark = document.getElementById("toggle-watermark").checked;
+      const ctx = canvas.getContext("2d");
+      if (watermark) {
+        ctx.font = "12px Inter";
+        ctx.fillStyle = "#999";
+        ctx.fillText("Signed via SignaturePad PRO", 10, canvas.height - 10);
+      }
+      const dataURL = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataURL;
+      a.download = "signature.png";
+      a.click();
+    });
+
+    // Text signature preview
+    document.getElementById("text-signature").addEventListener("input", (e) => {
+      document.getElementById("preview-text").textContent = e.target.value;
+    });
+
+    // Dark mode toggle
+    document.getElementById("dark-mode").addEventListener("change", (e) => {
+      document.body.classList.toggle("dark", e.target.checked);
+    });
+
+    // Upload background image
+    document.getElementById("upload-bg").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = new Image();
+        img.onload = function () {
+          const ctx = canvas.getContext("2d");
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          signaturePad.clear();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Email button (frontend trigger only)
+    document.getElementById("email").addEventListener("click", () => {
+      if (signaturePad.isEmpty()) return alert("Draw your signature first!");
+      const dataURL = signaturePad.toDataURL();
+      const mailto = `mailto:?subject=My Signature&body=See attached signature: ${dataURL}`;
+      window.location.href = mailto;
+    });
+
+    // Auto-save draft in localStorage
+    window.addEventListener("beforeunload", () => {
+      if (!signaturePad.isEmpty()) {
+        const data = signaturePad.toData();
+        localStorage.setItem("savedSignature", JSON.stringify(data));
+      }
+    });
+
+    // Load saved draft
+    const saved = localStorage.getItem("savedSignature");
+    if (saved) {
+      signaturePad.fromData(JSON.parse(saved));
+    }
+  </script>
+</body>
+</html>
